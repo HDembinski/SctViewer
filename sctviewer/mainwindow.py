@@ -170,16 +170,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_trk(self):
         for trk in ("trk", "vtrk", "mc_trk"):
-            if trk == "mc_trk":
+            try:
+                x, y, z, px, py, pz = self._get(
+                    f"{trk}_x",
+                    f"{trk}_y",
+                    f"{trk}_z",
+                    f"{trk}_px",
+                    f"{trk}_py",
+                    f"{trk}_pz",
+                )
+            except ValueError:
                 continue
-            x, y, z, px, py, pz = self._get(
-                f"{trk}_x",
-                f"{trk}_y",
-                f"{trk}_z",
-                f"{trk}_px",
-                f"{trk}_py",
-                f"{trk}_pz",
-            )
 
             for ax, a, b, pa, pb, lim in (
                 (self._ax_xy, x, y, px, py, self._xlim),
