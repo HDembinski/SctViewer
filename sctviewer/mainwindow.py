@@ -108,7 +108,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         d = self._data
 
-        def r(d, s, delta):
+        def r(d, s, delta, sym):
             xmin = []
             xmax = []
             for src in (f"vtx_{s}", f"trk_{s}", f"vtrk_{s}"):
@@ -118,11 +118,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     xmax.append(np.max(x))
                 except ValueError:
                     continue
-            return min(xmin), max(xmax)
+            xmin = min(xmin)
+            xmax = max(xmax)
+            if sym:
+                xmax = max(-xmin, xmax)
+                return -xmax, xmax
+            return xmin, xmax
 
-        self._xlim = r(d, "x", 1)
-        self._ylim = r(d, "y", 1)
-        self._zlim = r(d, "z", 10)
+        self._xlim = r(d, "x", 1, True)
+        self._ylim = r(d, "y", 1, True)
+        self._zlim = r(d, "z", 10, False)
 
         ax_xy.set_xlim(*self._xlim)
         ax_xy.set_ylim(*self._ylim)
