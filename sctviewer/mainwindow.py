@@ -76,7 +76,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_data(self):
         tree = self._tree
         ievent = self._ievent
-        self._range = max(0, ievent - 50), min(ievent + 100, tree.num_entries)
+        self._range = max(0, ievent - 50), min(ievent + 50, tree.num_entries)
         self._data = tree.arrays(
             filter_name=[
                 "vtx_len",
@@ -97,6 +97,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _get(self, *args):
         d = self._data
         i = self._ievent - self._range[0]
+        if len(args) == 1:
+            return d[args[0]][i]
         return (d[arg][i] for arg in args)
 
     def _init_canvas(self):
@@ -107,11 +109,16 @@ class MainWindow(QtWidgets.QMainWindow):
         d = self._data
 
         def r(d, s, delta):
-            s = f"vtx_{s}", f"trk_{s}", f"vtrk_{s}"
-            return (
-                min(np.min(d[si]) for si in s) - delta,
-                max(np.max(d[si]) for si in s) + delta,
-            )
+            xmin = []
+            xmax = []
+            for src in (f"vtx_{s}", f"trk_{s}", f"vtrk_{s}"):
+                try:
+                    x = d[src]
+                    xmin.append(np.min(x))
+                    xmax.append(np.max(x))
+                except ValueError:
+                    continue
+            return min(xmin), max(xmax)
 
         self._xlim = r(d, "x", 1)
         self._ylim = r(d, "y", 1)
@@ -153,14 +160,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_vtx()
         self._update_trk()
 
-        n_vtx, n_velo, n_long = self._get("vtx_len", "vtrk_len", "trk_len")
-        self._canvas.figure.suptitle(
-            f"Event {self._ievent + 1} / {self._tree.num_entries}    "
-            f"$n_\\mathrm{{vtx}} = {n_vtx}$    "
-            f"$n_\\mathrm{{VELO}} = {n_velo}$    "
-            f"$n_\\mathrm{{Long}} = {n_long}$"
-        )
+        title = [f"Event {self._ievent + 1} / {self._tree.num_entries}"]
 
+        try:
+            n = self._get("vtx_len")
+            title.append(f"$n_\\mathrm{{vtx}} = {n}$")
+        except ValueError:
+            pass
+
+        try:
+            n = self._get("vtrk_len")
+            title.append(f"$n_\\mathrm{{VELO}} = {n}$")
+        except ValueError:
+            pass
+
+        try:
+            n = self._get("trk_len")
+            title.append(f"$n_\\mathrm{{Long}} = {n}$")
+        except ValueError:
+            pass
+
+        self._canvas.figure.suptitle("    ".join(title))
         self._canvas.draw()
 
     def _update_vtx(self):
