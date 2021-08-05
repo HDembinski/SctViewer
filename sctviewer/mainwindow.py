@@ -1,5 +1,5 @@
 import numpy as np
-from matplotlib.backends.qt_compat import QtWidgets
+from matplotlib.backends.qt_compat import QtWidgets, QtCore
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar,
@@ -25,6 +25,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, filename):
         super().__init__()
         self._main = QtWidgets.QWidget()
+        self._main.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setCentralWidget(self._main)
         layout = QtWidgets.QVBoxLayout(self._main)
 
@@ -42,16 +43,21 @@ class MainWindow(QtWidgets.QMainWindow):
         f = uproot.open(filename)
         self._tree = f["ana"]
 
-        button_layout = QtWidgets.QHBoxLayout()
-
         b = QtWidgets.QPushButton("Backward")
+        f = QtWidgets.QPushButton("Forward")
+        s = QtWidgets.QSpinBox()
+
         b.clicked.connect(self._backward)
-        button_layout.addWidget(b)
+        f.clicked.connect(self._forward)
+        s.setRange(1, self._tree.num_entries)
+        s.setSingleStep(10)
+        s.valueChanged.connect(self._jump)
+        self._spinbox = s
 
-        b = QtWidgets.QPushButton("Forward")
-        b.clicked.connect(self._forward)
+        button_layout = QtWidgets.QHBoxLayout()
         button_layout.addWidget(b)
-
+        button_layout.addWidget(f)
+        button_layout.addWidget(s)
         layout.addLayout(button_layout)
 
         self._update_data()
@@ -173,18 +179,30 @@ class MainWindow(QtWidgets.QMainWindow):
                     [[(ai, bi), (a1i, b1i)] for (ai, bi, a1i, b1i) in zip(a, b, a1, b1)]
                 )
 
+    def _backward(self):
+        self._spinbox.setValue(self._ievent)
+
     def _forward(self):
-        if self._ievent == self._tree.num_entries - 1:
-            return
-        self._ievent += 1
-        if self._ievent >= self._range[1]:
+        self._spinbox.setValue(self._ievent + 2)
+
+    def _jump(self, value):
+        self._ievent = value - 1
+        if self._ievent < self._range[0] or self._ievent >= self._range[1]:
             self._update_data()
         self._update_canvas()
 
-    def _backward(self):
-        if self._ievent == 0:
+    def keyPressEvent(self, event):
+        key = event.key()
+        Qt = QtCore.Qt
+        if key in (Qt.Key_Q, Qt.Key_Escape):
+            self.close()
             return
-        self._ievent -= 1
-        if self._ievent < self._range[0]:
-            self._update_data()
-        self._update_canvas()
+        if key == Qt.Key_Right:
+            self._forward()
+            return
+        if key == Qt.Key_Left:
+            self._backward()
+            return
+        if key == Qt.Key_H:
+            pass
+        super().keyPressEvent(event)
