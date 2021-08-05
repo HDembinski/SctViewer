@@ -27,18 +27,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(self._main)
         layout = QtWidgets.QVBoxLayout(self._main)
 
-        fig = Figure(figsize=(12, 5))
+        fig = Figure(figsize=(12, 4.5))
         self._canvas = FigureCanvas(fig)
         layout.addWidget(self._canvas)
         self.addToolBar(NavigationToolbar(self._canvas, self))
 
         self._ax_xy = fig.add_axes([0.08, 0.1, 0.35, 0.82])
         self._ax_zx = fig.add_axes([0.52, 0.1, 0.45, 0.39])
-        self._ax_zy = fig.add_axes([0.52, 0.53, 0.45, 0.39])
+        self._ax_zy = fig.add_axes(
+            [0.52, 0.53, 0.45, 0.39], sharex=self._ax_zx, sharey=self._ax_xy
+        )
 
         f = uproot.open(filename)
         self._tree = f["ana"]
-        self._tree.show()
 
         button_layout = QtWidgets.QHBoxLayout()
 
