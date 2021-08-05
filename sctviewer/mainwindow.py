@@ -5,7 +5,8 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from matplotlib.figure import Figure
-from matplotlib.ticker import NullFormatter
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 import uproot
 import awkward  # noqa
 
@@ -54,6 +55,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(button_layout)
 
         self._update_data()
+        self._init_canvas()
         self._update_canvas()
 
     def _update_data(self):
@@ -70,6 +72,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 "vtrk_len",
                 "vtrk_[xyz]",
                 "vtrk_p[xyz]",
+                "mc_trk_[xyz]",
+                "mc_trk_p[xyz]",
             ],
             entry_start=self._range[0],
             entry_stop=self._range[1],
@@ -88,10 +92,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ylim = r(d, "y", 1)
             self._zlim = r(d, "z", 10)
 
-    def _setup_axes(self):
+    def _get(self, *args):
+        d = self._data
+        i = self._ievent - self._range[0]
+        return (d[arg][i] for arg in args)
+
+    def _init_canvas(self):
         ax_xy = self._ax_xy
         ax_zx = self._ax_zx
         ax_zy = self._ax_zy
+
         ax_xy.set_xlim(*self._xlim)
         ax_xy.set_ylim(*self._ylim)
         ax_zx.set_xlim(*self._zlim)
@@ -105,85 +115,63 @@ class MainWindow(QtWidgets.QMainWindow):
         ax_zx.set_ylabel("x / mm")
         ax_zy.set_ylabel("y / mm")
 
-        self._ax_zy.xaxis.set_major_formatter(NullFormatter())
+        self._ax_zy.xaxis.set_visible(False)
 
-    def _local_index(self):
-        return self._ievent - self._range[0]
-
-    def _draw_vtx(self):
-        ax_xy = self._ax_xy
-        ax_zx = self._ax_zx
-        ax_zy = self._ax_zy
-        data = self._data
-        i = self._local_index()
-        col = "y"
-        ax_xy.plot(data["vtx_x"][i], data["vtx_y"][i], "o", ms=10, color=col)
-        ax_zx.plot(data["vtx_z"][i], data["vtx_x"][i], "o", ms=10, color=col)
-        ax_zy.plot(data["vtx_z"][i], data["vtx_y"][i], "o", ms=10, color=col)
-
-    def _draw_trk(self, is_long):
         alpha = 0.2
-
-        data = self._data
-        i = self._local_index()
-        ax_xy = self._ax_xy
-        ax_zx = self._ax_zx
-        ax_zy = self._ax_zy
-
-        trk = "trk" if is_long else "vtrk"
-        x = data[f"{trk}_x"][i]
-        y = data[f"{trk}_y"][i]
-        z = data[f"{trk}_z"][i]
-        px = data[f"{trk}_px"][i]
-        py = data[f"{trk}_py"][i]
-        pz = data[f"{trk}_pz"][i]
-
-        col = "r" if is_long else "b"
-
-        ax_xy.plot(x, y, "o", color=col)
-        ax_zx.plot(z, x, "o", color=col)
-        ax_zy.plot(z, y, "o", color=col)
-
-        r = (np.where(px > 0, self._xlim[1], self._xlim[0]) - x) / px
-        x1 = x + px * r
-        y1 = y + py * r
-
-        for x0i, x1i, y0i, y1i in zip(x, x1, y, y1):
-            ax_xy.plot([x0i, x1i], [y0i, y1i], "-", color=col, alpha=alpha)
-
-        r = (np.where(pz > 0, self._zlim[1], self._zlim[0]) - z) / pz
-
-        z1 = z + pz * r
-        x1 = x + px * r
-        y1 = y + py * r
-
-        for z0i, z1i, x0i, x1i, y0i, y1i in zip(z, z1, x, x1, y, y1):
-            ax_zx.plot([z0i, z1i], [x0i, x1i], "-", color=col, alpha=alpha)
-            ax_zy.plot([z0i, z1i], [y0i, y1i], "-", color=col, alpha=alpha)
+        for ax in (ax_xy, ax_zx, ax_zy):
+            ax._vtx = Line2D([], [], marker="o", ls="", color="r")
+            ax._trk = LineCollection([], colors="r", alpha=alpha)
+            ax._vtrk = LineCollection([], colors="b", alpha=alpha)
+            ax._mc_trk = LineCollection([], colors="g", alpha=alpha)
+            ax.add_artist(ax._vtx)
+            ax.add_collection(ax._trk)
+            ax.add_collection(ax._vtrk)
+            ax.add_collection(ax._mc_trk)
 
     def _update_canvas(self):
-        ax_xy = self._ax_xy
-        ax_zx = self._ax_zx
-        ax_zy = self._ax_zy
-        for ax in (ax_xy, ax_zx, ax_zy):
-            ax.cla()
+        self._update_vtx()
+        self._update_trk()
 
-        self._setup_axes()
-        self._draw_vtx()
-        self._draw_trk(True)
-        self._draw_trk(False)
-
-        data = self._data
-        i = self._local_index()
-
+        n_vtx, n_velo, n_long = self._get("vtx_len", "vtrk_len", "trk_len")
         self._canvas.figure.suptitle(
-            f"Event {self._ievent + 1} / {self._tree.num_entries} "
-            f"$n_\\mathrm{{vtx}} = {data['vtx_len'][i]}$ "
-            f"$n_\\mathrm{{VELO}} = {data['vtrk_len'][i]}$ "
-            f"$n_\\mathrm{{Long}} = {data['trk_len'][i]}$"
+            f"Event {self._ievent + 1} / {self._tree.num_entries}    "
+            f"$n_\\mathrm{{vtx}} = {n_vtx}$    "
+            f"$n_\\mathrm{{VELO}} = {n_velo}$    "
+            f"$n_\\mathrm{{Long}} = {n_long}$"
         )
 
         self._canvas.draw()
+
+    def _update_vtx(self):
+        x, y, z = self._get("vtx_x", "vtx_y", "vtx_z")
+        for ax, a, b in ((self._ax_xy, x, y), (self._ax_zx, z, x), (self._ax_zy, z, y)):
+            ax._vtx.set_data(a, b)
+
+    def _update_trk(self):
+        for trk in ("trk", "vtrk", "mc_trk"):
+            if trk == "mc_trk":
+                continue
+            x, y, z, px, py, pz = self._get(
+                f"{trk}_x",
+                f"{trk}_y",
+                f"{trk}_z",
+                f"{trk}_px",
+                f"{trk}_py",
+                f"{trk}_pz",
+            )
+
+            for ax, a, b, pa, pb, lim in (
+                (self._ax_xy, x, y, px, py, self._xlim),
+                (self._ax_zx, z, x, pz, px, self._zlim),
+                (self._ax_zy, z, y, pz, py, self._zlim),
+            ):
+                r = (np.where(pa > 0, lim[1], lim[0]) - a) / pa
+                a1 = a + pa * r
+                b1 = b + pb * r
+
+                getattr(ax, f"_{trk}").set_segments(
+                    [[(ai, bi), (a1i, b1i)] for (ai, bi, a1i, b1i) in zip(a, b, a1, b1)]
+                )
 
     def _forward(self):
         if self._ievent == self._tree.num_entries - 1:
