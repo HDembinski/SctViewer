@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 import argparse
 import textwrap
+import curses
+import ROOT
 
-parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
-                                 description="Browse MC records in SCT files.",
-                                 epilog=textwrap.dedent("""
+parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Browse MC records in SCT files.",
+    epilog=textwrap.dedent(
+        """
 Interactive controls:
   - Right: next event
   - Left: previous event
@@ -15,13 +19,13 @@ Interactive controls:
   - q: quit
   - g: goto event index (0 is first event)
 
-"""))
-parser.add_argument("input_file",
-                    help="SCT file with MC record")
+"""
+    ),
+)
+parser.add_argument("input_file", help="SCT file with MC record")
 args = parser.parse_args()
 
-import curses
-import ROOT
+
 root_file = ROOT.TFile.Open(args.input_file)
 sct = root_file.sct
 if not hasattr(sct, "mc_trk_len"):
@@ -33,19 +37,38 @@ pdg_db = ROOT.TDatabasePDG.Instance()
 
 def is_long_lived(pid):
     pid = abs(pid)
-    return pid in (11, 12, 13, 14, 16, 22, 130, 211, 310, 321, 2112, 2212, 3112, 3122, 3312, 3322, 3334)
+    return pid in (
+        11,
+        12,
+        13,
+        14,
+        16,
+        22,
+        130,
+        211,
+        310,
+        321,
+        2112,
+        2212,
+        3112,
+        3122,
+        3312,
+        3322,
+        3334,
+    )
 
 
 def get_prompt(k, kmax, pid, imot):
-  assert k >= 0
-  result = k
-  while True:
-    k = imot[k]
-    if k == -1: break
-    assert k >= 0 and k < kmax
-    if is_long_lived(pid[k]):
-      result = k
-  return result
+    assert k >= 0
+    result = k
+    while True:
+        k = imot[k]
+        if k == -1:
+            break
+        assert k >= 0 and k < kmax
+        if is_long_lived(pid[k]):
+            result = k
+    return result
 
 
 final_state_mask = 1 << 0
@@ -64,30 +87,32 @@ class Node(dict):
     def __lt__(self, other):
         return self.energy < other.energy
 
-def get_event_tree(sct):
 
+def get_event_tree(sct):
     def energy(i):
         px = sct.mc_trk_px[i]
         py = sct.mc_trk_py[i]
         pz = sct.mc_trk_pz[i]
         m = sct.mc_trk_m[i]
-        return (px*px + py*py + pz*pz + m*m)**0.5
+        return (px * px + py * py + pz * pz + m * m) ** 0.5
 
-    energies = [energy(i) for i in xrange(sct.mc_trk_len)]
+    energies = [energy(i) for i in range(sct.mc_trk_len)]
 
     # mark particles as prompt and/or long-lived
-    flags = [ord(sct.mc_trk_flag[i]) for i in xrange(sct.mc_trk_len)]
-    for ipart in xrange(sct.mc_trk_len):
+    flags = [ord(sct.mc_trk_flag[i]) for i in range(sct.mc_trk_len)]
+    for ipart in range(sct.mc_trk_len):
         pid = sct.mc_trk_pid[ipart]
         flag = flags[ipart]
         if is_long_lived(pid):
             flag |= long_lived_mask
         if flag & final_state_mask:
-            flags[get_prompt(ipart, sct.mc_trk_len, sct.mc_trk_pid, sct.mc_trk_imot)] |= prompt_mask
+            flags[
+                get_prompt(ipart, sct.mc_trk_len, sct.mc_trk_pid, sct.mc_trk_imot)
+            ] |= prompt_mask
 
     root = Node(None, None, None)
     esum_prompt = 0.0
-    for ipart in xrange(sct.mc_trk_len):
+    for ipart in range(sct.mc_trk_len):
         if flags[ipart] & prompt_mask:
             esum_prompt += energies[ipart]
         chain = []
@@ -104,6 +129,7 @@ def get_event_tree(sct):
 
     class count_visitor:
         n = 0
+
         def __call__(self, node):
             if node.pid is not None:
                 self.n += 1
@@ -112,18 +138,26 @@ def get_event_tree(sct):
 
     cv = count_visitor()
     cv(root)
-    assert(cv.n == sct.mc_trk_len)
+    assert cv.n == sct.mc_trk_len
 
     return root, cv.n, esum_prompt
+
 
 def draw_event(stdscr, root, ievent, npart, esum_prompt, offset):
     stdscr.clear()
     if offset > 0:
         stdscr.addstr(0, 0, "  ^^^^^^^^")
     else:
-        stdscr.addstr(0, 0, "event %i: %i particles, esum[prompt]/Npv %.2f TeV" % (ievent, npart, esum_prompt/1e6))
+        stdscr.addstr(
+            0,
+            0,
+            "event %i: %i particles, esum[prompt]/Npv %.2f TeV"
+            % (ievent, npart, esum_prompt / 1e6),
+        )
+
     class print_visitor:
         iy = 1
+
         def __call__(self, node, ix=0):
             if self.iy - offset == curses.LINES - 1:
                 stdscr.addstr(self.iy - offset, 0, "  vvvvvvvv")
@@ -139,8 +173,8 @@ def draw_event(stdscr, root, ievent, npart, esum_prompt, offset):
                             z = pid // 10000
                             pid -= z * 10000
                             a = pid / 10
-                            name = "Nucleus(%i,%i)" % (z,a)
-                            print name, node.pid
+                            name = "Nucleus(%i,%i)" % (z, a)
+                            print(name, node.pid)
                         else:
                             name = "Unknown(%i)" % node.pid
                     sflag = ""
@@ -150,13 +184,19 @@ def draw_event(stdscr, root, ievent, npart, esum_prompt, offset):
                         sflag += "[associated]"
                     if node.flag & prompt_mask:
                         sflag += "[prompt]"
-                    stdscr.addstr(self.iy - offset, ix, "%s %.1f GeV/c %s" % (name, node.energy/1e3, sflag))
+                    stdscr.addstr(
+                        self.iy - offset,
+                        ix,
+                        "%s %.1f GeV/c %s" % (name, node.energy / 1e3, sflag),
+                    )
                 self.iy += 1
             for child in reversed(sorted(node.values())):
                 self(child, ix + 3)
+
     pv = print_visitor()
     pv(root)
     stdscr.refresh()
+
 
 def main(stdscr):
     stdscr.clear()
@@ -193,13 +233,13 @@ def main(stdscr):
         elif c == curses.KEY_PPAGE:
             if offset == 0:
                 continue
-            offset = max(0, offset - (curses.LINES-3))
+            offset = max(0, offset - (curses.LINES - 3))
         elif c == curses.KEY_NPAGE:
-            offset += curses.LINES-3
+            offset += curses.LINES - 3
         elif c == ord("q"):
             break
         elif c == ord("g"):
-            stdscr.addstr(0, 0, "go to: " + " "*(curses.COLS-7))
+            stdscr.addstr(0, 0, "go to: " + " " * (curses.COLS - 7))
             stdscr.move(0, 7)
             stdscr.refresh()
             goto = None
@@ -211,7 +251,7 @@ def main(stdscr):
                         goto = 0
                     goto = goto * 10 + n
                     stdscr.addstr(key)
-                except:
+                except:  # noqa
                     break
             if goto is not None:
                 offset = 0
@@ -220,5 +260,6 @@ def main(stdscr):
                 tree, npart, esum_prompt = get_event_tree(sct)
 
         draw_event(stdscr, tree, ievent, npart, esum_prompt, offset)
+
 
 curses.wrapper(main)
