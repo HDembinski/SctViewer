@@ -2,13 +2,21 @@ import numpy as np
 from matplotlib.backends.qt_compat import QtWidgets, QtCore
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvas,
-    NavigationToolbar2QT as NavigationToolbar,
+    NavigationToolbar2QT as NavigationToolbarBase,
 )
 from matplotlib.figure import Figure
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import uproot
 import awkward  # noqa
+
+
+class NavigationToolbar(NavigationToolbarBase):
+    toolitems = [
+        t
+        for t in NavigationToolbarBase.toolitems
+        if t[0] in ("Home", "Pan", "Zoom", "Save")
+    ]
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -32,7 +40,8 @@ class MainWindow(QtWidgets.QMainWindow):
         fig = Figure(figsize=(12, 4.5))
         self._canvas = FigureCanvas(fig)
         layout.addWidget(self._canvas)
-        self.addToolBar(NavigationToolbar(self._canvas, self))
+        self._navigation = NavigationToolbar(self._canvas, self)
+        self.addToolBar(self._navigation)
 
         self._ax_xy = fig.add_axes([0.08, 0.1, 0.35, 0.82])
         self._ax_zx = fig.add_axes([0.52, 0.1, 0.45, 0.39])
@@ -125,14 +134,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         alpha = 0.2
         for ax in (ax_xy, ax_zx, ax_zy):
-            ax._vtx = Line2D([], [], marker="o", ls="", color="r")
-            ax._trk = LineCollection([], colors="r", alpha=alpha)
-            ax._vtrk = LineCollection([], colors="b", alpha=alpha)
-            ax._mc_trk = LineCollection([], colors="g", alpha=alpha)
-            ax.add_artist(ax._vtx)
-            ax.add_collection(ax._trk)
-            ax.add_collection(ax._vtrk)
-            ax.add_collection(ax._mc_trk)
+            obj = {"vtx": Line2D([], [], marker="o", ls="", color="r")}
+            for trk, col in (("trk", "r"), ("vtrk", "b"), ("mc_trk", "g")):
+                obj[trk + "_pts"] = Line2D(
+                    [], [], marker=".", ls="", color=col, mec="none", alpha=alpha
+                )
+                obj[trk] = LineCollection([], colors=col, alpha=alpha)
+            ax.add_artist(obj["trk"])
+            ax.add_artist(obj["trk_pts"])
+            ax.add_artist(obj["vtrk_pts"])
+            ax.add_artist(obj["mc_trk_pts"])
+            ax.add_collection(obj["trk"])
+            ax.add_collection(obj["vtrk"])
+            ax.add_collection(obj["mc_trk"])
+            ax._obj = obj
 
     def _update_canvas(self):
         self._update_vtx()
@@ -151,7 +166,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_vtx(self):
         x, y, z = self._get("vtx_x", "vtx_y", "vtx_z")
         for ax, a, b in ((self._ax_xy, x, y), (self._ax_zx, z, x), (self._ax_zy, z, y)):
-            ax._vtx.set_data(a, b)
+            ax._obj["vtx"].set_data(a, b)
 
     def _update_trk(self):
         for trk in ("trk", "vtrk", "mc_trk"):
@@ -175,9 +190,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 a1 = a + pa * r
                 b1 = b + pb * r
 
-                getattr(ax, f"_{trk}").set_segments(
+                ax._obj[trk].set_segments(
                     [[(ai, bi), (a1i, b1i)] for (ai, bi, a1i, b1i) in zip(a, b, a1, b1)]
                 )
+                ax._obj[trk + "_pts"].set_data(a, b)
 
     def _backward(self):
         self._spinbox.setValue(self._ievent)
@@ -204,5 +220,5 @@ class MainWindow(QtWidgets.QMainWindow):
             self._backward()
             return
         if key == Qt.Key_H:
-            pass
-        super().keyPressEvent(event)
+            self._navigation.home()
+            return
