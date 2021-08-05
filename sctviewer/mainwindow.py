@@ -78,19 +78,6 @@ class MainWindow(QtWidgets.QMainWindow):
             entry_start=self._range[0],
             entry_stop=self._range[1],
         )
-        if self._xlim is None:
-            d = self._data
-
-            def r(d, s, delta):
-                s = f"vtx_{s}", f"trk_{s}", f"vtrk_{s}"
-                return (
-                    min(np.min(d[si]) for si in s) - delta,
-                    max(np.max(d[si]) for si in s) + delta,
-                )
-
-            self._xlim = r(d, "x", 1)
-            self._ylim = r(d, "y", 1)
-            self._zlim = r(d, "z", 10)
 
     def _get(self, *args):
         d = self._data
@@ -101,6 +88,19 @@ class MainWindow(QtWidgets.QMainWindow):
         ax_xy = self._ax_xy
         ax_zx = self._ax_zx
         ax_zy = self._ax_zy
+
+        d = self._data
+
+        def r(d, s, delta):
+            s = f"vtx_{s}", f"trk_{s}", f"vtrk_{s}"
+            return (
+                min(np.min(d[si]) for si in s) - delta,
+                max(np.max(d[si]) for si in s) + delta,
+            )
+
+        self._xlim = r(d, "x", 1)
+        self._ylim = r(d, "y", 1)
+        self._zlim = r(d, "z", 10)
 
         ax_xy.set_xlim(*self._xlim)
         ax_xy.set_ylim(*self._ylim)
