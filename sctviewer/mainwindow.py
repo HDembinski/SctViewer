@@ -21,7 +21,6 @@ class NavigationToolbar(NavigationToolbarBase):
 
 class MainWindow(QtWidgets.QMainWindow):
 
-    _ievent = 0
     _range = None
     _tree = None
     _canvas = None
@@ -32,30 +31,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, filename):
         super().__init__()
+
+        f = uproot.open(filename)
+
+        # file can contain trees with different names, sct or ana, and also may
+        # have several versions, sct;4 and sct;5 for instance
+        keys = set(k.split(";")[0] for k in f.keys())
+        if len(keys) != 1:
+            raise SystemExit("Error: files contains more than one tree")
+
+        self._tree = f[next(iter(keys))]
+
         self._main = QtWidgets.QWidget()
         self._main.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setCentralWidget(self._main)
-        layout = QtWidgets.QVBoxLayout(self._main)
 
         fig = Figure(figsize=(12, 4.5))
-        self._canvas = FigureCanvas(fig)
-        layout.addWidget(self._canvas)
-        self._navigation = NavigationToolbar(self._canvas, self)
-        self.addToolBar(self._navigation)
-
         self._ax_xy = fig.add_axes([0.08, 0.1, 0.35, 0.82])
         self._ax_zx = fig.add_axes([0.52, 0.1, 0.45, 0.39])
         self._ax_zy = fig.add_axes(
             [0.52, 0.53, 0.45, 0.39], sharex=self._ax_zx, sharey=self._ax_xy
         )
 
-        f = uproot.open(filename)
-        self._tree = f["ana"]
+        self._canvas = FigureCanvas(fig)
+        self._navigation = NavigationToolbar(self._canvas, self)
+        self.addToolBar(self._navigation)
+
+        self._velo_visible = QtWidgets.QPushButton("VELO tracks")
+        self._long_visible = QtWidgets.QPushButton("Long tracks")
+        self._generator_visible = QtWidgets.QPushButton("Generator tracks")
+        for button in (self._velo_visible, self._long_visible, self._generator_visible):
+            button.setCheckable(True)
+            button.setChecked(True)
+            button.clicked.connect(self._update_canvas)
 
         b = QtWidgets.QPushButton("Backward")
         f = QtWidgets.QPushButton("Forward")
         s = QtWidgets.QSpinBox()
-
         b.clicked.connect(self._backward)
         f.clicked.connect(self._forward)
         s.setRange(1, self._tree.num_entries)
@@ -63,6 +75,13 @@ class MainWindow(QtWidgets.QMainWindow):
         s.valueChanged.connect(self._jump)
         self._spinbox = s
 
+        layout = QtWidgets.QVBoxLayout(self._main)
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addWidget(self._velo_visible)
+        button_layout.addWidget(self._long_visible)
+        button_layout.addWidget(self._generator_visible)
+        layout.addLayout(button_layout)
+        layout.addWidget(self._canvas)
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addWidget(b)
         button_layout.addWidget(f)
@@ -75,7 +94,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_data(self):
         tree = self._tree
-        ievent = self._ievent
+        ievent = self._spinbox.value() - 1
         self._range = max(0, ievent - 50), min(ievent + 50, tree.num_entries)
         self._data = tree.arrays(
             filter_name=[
@@ -87,6 +106,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "vtrk_len",
                 "vtrk_[xyz]",
                 "vtrk_p[xyz]",
+                "mc_trk_len",
                 "mc_trk_[xyz]",
                 "mc_trk_p[xyz]",
             ],
@@ -96,7 +116,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _get(self, *args):
         d = self._data
-        i = self._ievent - self._range[0]
+        i = self._spinbox.value() - 1 - self._range[0]
         if len(args) == 1:
             return d[args[0]][i]
         return (d[arg][i] for arg in args)
@@ -146,12 +166,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         alpha = 0.2
         for ax in (ax_xy, ax_zx, ax_zy):
-            obj = {"vtx": Line2D([], [], marker="o", ls="", color="r")}
-            for trk, col in (("trk", "r"), ("vtrk", "b"), ("mc_trk", "g")):
+            obj = {"vtx": Line2D([], [], marker="o", ls="", mec="r", color="w", ms=15)}
+            for trk, col, zorder in (
+                ("trk", "r", 3),
+                ("vtrk", "b", 2),
+                ("mc_trk", "g", 1),
+            ):
                 obj[trk + "_pts"] = Line2D(
-                    [], [], marker=".", ls="", color=col, mec="none", alpha=alpha
+                    [],
+                    [],
+                    marker=".",
+                    ls="",
+                    color=col,
+                    mec="none",
+                    alpha=alpha,
+                    zorder=zorder,
                 )
-                obj[trk] = LineCollection([], colors=col, alpha=alpha)
+                obj[trk] = LineCollection([], colors=col, alpha=alpha, zorder=zorder)
             ax.add_artist(obj["trk"])
             ax.add_artist(obj["trk_pts"])
             ax.add_artist(obj["vtrk_pts"])
@@ -165,7 +196,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_vtx()
         self._update_trk()
 
-        title = [f"Event {self._ievent + 1} / {self._tree.num_entries}"]
+        title = [f"Event {self._spinbox.value()} / {self._tree.num_entries}"]
 
         try:
             n = self._get("vtx_len")
@@ -185,6 +216,12 @@ class MainWindow(QtWidgets.QMainWindow):
         except ValueError:
             pass
 
+        try:
+            n = self._get("mc_trk_len")
+            title.append(f"$n_\\mathrm{{gen}} = {n}$")
+        except ValueError:
+            pass
+
         self._canvas.figure.suptitle("    ".join(title))
         self._canvas.draw()
 
@@ -194,25 +231,38 @@ class MainWindow(QtWidgets.QMainWindow):
             ax._obj["vtx"].set_data(a, b)
 
     def _update_trk(self):
-        for trk in ("trk", "vtrk", "mc_trk"):
-            try:
-                x, y, z, px, py, pz = self._get(
-                    f"{trk}_x",
-                    f"{trk}_y",
-                    f"{trk}_z",
-                    f"{trk}_px",
-                    f"{trk}_py",
-                    f"{trk}_pz",
-                )
-            except ValueError:
-                continue
+        for trk, button in (
+            ("trk", self._long_visible),
+            ("vtrk", self._velo_visible),
+            ("mc_trk", self._generator_visible),
+        ):
+            if button.isChecked():
+                try:
+                    x, y, z, px, py, pz = self._get(
+                        f"{trk}_x",
+                        f"{trk}_y",
+                        f"{trk}_z",
+                        f"{trk}_px",
+                        f"{trk}_py",
+                        f"{trk}_pz",
+                    )
+                except ValueError:
+                    continue
+            else:
+                x, y, z, px, py, pz = np.empty((6, 0))
 
             for ax, a, b, pa, pb, lim in (
                 (self._ax_xy, x, y, px, py, self._xlim),
                 (self._ax_zx, z, x, pz, px, self._zlim),
                 (self._ax_zy, z, y, pz, py, self._zlim),
             ):
-                r = (np.where(pa > 0, lim[1], lim[0]) - a) / pa
+                pa = np.array(pa)
+                a = np.array(a)
+                r = np.zeros_like(a)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    r[pa > 0] = ((lim[1] - a) / pa)[pa > 0]
+                    r[pa < 0] = ((lim[0] - a) / pa)[pa < 0]
+
                 a1 = a + pa * r
                 b1 = b + pb * r
 
@@ -222,14 +272,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 ax._obj[trk + "_pts"].set_data(a, b)
 
     def _backward(self):
-        self._spinbox.setValue(self._ievent)
+        self._spinbox.setValue(self._spinbox.value() - 1)
 
     def _forward(self):
-        self._spinbox.setValue(self._ievent + 2)
+        self._spinbox.setValue(self._spinbox.value() + 1)
 
     def _jump(self, value):
-        self._ievent = value - 1
-        if self._ievent < self._range[0] or self._ievent >= self._range[1]:
+        ievent = self._spinbox.value() - 1
+        if ievent < self._range[0] or ievent >= self._range[1]:
             self._update_data()
         self._update_canvas()
 
@@ -247,4 +297,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if key == Qt.Key_H:
             self._navigation.home()
+            return
+        if key == Qt.Key_G:
+            self._generator_visible.click()
+            return
+        if key == Qt.Key_L:
+            self._long_visible.click()
+            return
+        if key == Qt.Key_V:
+            self._velo_visible.click()
             return

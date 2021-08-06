@@ -26,3 +26,6 @@ Supported Keyboard commands:
 - Right: Increment event number
 - Left: Decrement event number
 - H: Restore original zoom setting
+- V: Toggle VELO track visibility
+- L: Toggle Long track visibility
+- G: Toggle Generator track visibility
