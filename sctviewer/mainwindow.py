@@ -9,6 +9,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 import uproot
 import awkward  # noqa
+import warnings
 
 
 class NavigationToolbar(NavigationToolbarBase):
@@ -140,6 +141,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "vtrk_len",
                 "vtrk_[xyz]",
                 "vtrk_p[xyz]",
+                "mc_vtx_len",
                 "mc_trk_len",
                 "mc_trk_[xyz]",
                 "mc_trk_p[xyz]",
@@ -171,6 +173,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     xmin.append(np.min(x))
                     xmax.append(np.max(x))
                 except ValueError:
+                    warnings.warn(f"Branch {src} not found")
                     continue
             xmin = min(xmin)
             xmax = max(xmax)
@@ -219,25 +222,31 @@ class MainWindow(QtWidgets.QMainWindow):
             n = self._get("vtx_len")
             title.append(f"$n_\\mathrm{{vtx}} = {n}$")
         except ValueError:
-            pass
+            warnings.warn("Branch vtx_len not found")
 
         try:
             n = self._get("vtrk_len")
             title.append(f"$n_\\mathrm{{VELO}} = {n}$")
         except ValueError:
-            pass
+            warnings.warn("Branch vtrk_len not found")
 
         try:
             n = self._get("trk_len")
             title.append(f"$n_\\mathrm{{Long}} = {n}$")
         except ValueError:
-            pass
+            warnings.warn("Branch trk_len not found")
 
         try:
             n = self._get("mc_trk_len")
             title.append(f"$n_\\mathrm{{gen}} = {n}$")
         except ValueError:
-            pass
+            warnings.warn("Branch mc_trk_len not found")
+
+        try:
+            n = self._get("mc_vtx_len")
+            title.append(f"$n_\\mathrm{{pv,gen}} = {n}$")
+        except ValueError:
+            warnings.warn("Branch mc_vtx_len not found")
 
         self._canvas.figure.suptitle("    ".join(title))
         self._canvas.draw()
@@ -264,6 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         f"{trk}_pz",
                     )
                 except ValueError:
+                    warnings.warn(f"Branches {trk}_[xyz] or {trk}_p[xyz] not found")
                     continue
             else:
                 x, y, z, px, py, pz = np.empty((6, 0))
@@ -320,4 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if key == Qt.Key_V:
             self._velo_visible.click()
+            return
+        if key == Qt.Key_B:
+            print(self._tree.show())
             return
