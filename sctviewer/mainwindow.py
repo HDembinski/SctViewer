@@ -332,5 +332,5 @@ class MainWindow(QtWidgets.QMainWindow):
             self._velo_visible.click()
             return
         if key == Qt.Key_B:
-            print(self._tree.show())
+            self._tree.show()
             return
