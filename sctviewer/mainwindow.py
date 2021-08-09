@@ -19,6 +19,40 @@ class NavigationToolbar(NavigationToolbarBase):
     ]
 
 
+class PointCollection:
+    def __init__(self, ax, color, zorder):
+        self._pts = Line2D(
+            [], [], marker="o", ls="", mec=color, color="none", ms=10, zorder=zorder
+        )
+        ax.add_artist(self._pts)
+
+    def update(self, x, y):
+        self._pts.set_data(x, y)
+
+
+class TrackCollection:
+    def __init__(self, ax, color, alpha, zorder):
+        self._lines = LineCollection([], colors=color, alpha=alpha, zorder=zorder)
+        self._pts = Line2D(
+            [],
+            [],
+            marker=".",
+            ls="",
+            color=color,
+            mec="none",
+            alpha=alpha,
+            zorder=zorder,
+        )
+        ax.add_collection(self._lines)
+        ax.add_artist(self._pts)
+
+    def update(self, x0, y0, x1, y1):
+        self._lines.set_segments(
+            [[(x0i, y0i), (x1i, y1i)] for (x0i, y0i, x1i, y1i) in zip(x0, y0, x1, y1)]
+        )
+        self._pts.set_data(x0, y0)
+
+
 class MainWindow(QtWidgets.QMainWindow):
 
     _range = None
@@ -164,32 +198,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._ax_zy.xaxis.set_visible(False)
 
-        alpha = 0.2
         for ax in (ax_xy, ax_zx, ax_zy):
-            obj = {"vtx": Line2D([], [], marker="o", ls="", mec="r", color="w", ms=15)}
+            obj = {"vtx": PointCollection(ax, "r", 4)}
             for trk, col, zorder in (
                 ("trk", "r", 3),
                 ("vtrk", "b", 2),
                 ("mc_trk", "g", 1),
             ):
-                obj[trk + "_pts"] = Line2D(
-                    [],
-                    [],
-                    marker=".",
-                    ls="",
-                    color=col,
-                    mec="none",
-                    alpha=alpha,
-                    zorder=zorder,
-                )
-                obj[trk] = LineCollection([], colors=col, alpha=alpha, zorder=zorder)
-            ax.add_artist(obj["trk"])
-            ax.add_artist(obj["trk_pts"])
-            ax.add_artist(obj["vtrk_pts"])
-            ax.add_artist(obj["mc_trk_pts"])
-            ax.add_collection(obj["trk"])
-            ax.add_collection(obj["vtrk"])
-            ax.add_collection(obj["mc_trk"])
+                alpha = 0.2
+                obj[trk] = TrackCollection(ax, col, alpha, zorder)
             ax._obj = obj
 
     def _update_canvas(self):
@@ -228,7 +245,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_vtx(self):
         x, y, z = self._get("vtx_x", "vtx_y", "vtx_z")
         for ax, a, b in ((self._ax_xy, x, y), (self._ax_zx, z, x), (self._ax_zy, z, y)):
-            ax._obj["vtx"].set_data(a, b)
+            ax._obj["vtx"].update(a, b)
 
     def _update_trk(self):
         for trk, button in (
@@ -266,10 +283,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 a1 = a + pa * r
                 b1 = b + pb * r
 
-                ax._obj[trk].set_segments(
-                    [[(ai, bi), (a1i, b1i)] for (ai, bi, a1i, b1i) in zip(a, b, a1, b1)]
-                )
-                ax._obj[trk + "_pts"].set_data(a, b)
+                ax._obj[trk].update(a, b, a1, b1)
 
     def _backward(self):
         self._spinbox.setValue(self._spinbox.value() - 1)
