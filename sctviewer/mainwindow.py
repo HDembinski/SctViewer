@@ -11,6 +11,23 @@ import uproot
 import awkward  # noqa
 import warnings
 
+PID = {
+    "pi": 211,
+    "K": 321,
+    "p": 2212,
+    "n": 2112,
+    "e": 11,
+    "mu": 13,
+    "gamma": 22,
+    "strange_neutral": (
+        130,
+        310,
+        3122,
+        3322,
+    ),
+    "strange_charged": (3312, 3334, 3112),
+}
+
 
 class NavigationToolbar(NavigationToolbarBase):
     toolitems = [
@@ -27,12 +44,12 @@ class PointCollection:
         )
         ax.add_artist(self._pts)
 
-    def update(self, x, y):
-        self._pts.set_data(x, y)
+    def update(self, a, b):
+        self._pts.set_data(a, b)
 
 
 class TrackCollection:
-    def __init__(self, ax, color, alpha, zorder):
+    def __init__(self, ax, color, alpha, zorder, linestyle):
         self._lines = LineCollection([], colors=color, alpha=alpha, zorder=zorder)
         self._pts = Line2D(
             [],
@@ -47,11 +64,11 @@ class TrackCollection:
         ax.add_collection(self._lines)
         ax.add_artist(self._pts)
 
-    def update(self, x0, y0, x1, y1):
+    def update(self, a0, b0, a1, b1):
         self._lines.set_segments(
-            [[(x0i, y0i), (x1i, y1i)] for (x0i, y0i, x1i, y1i) in zip(x0, y0, x1, y1)]
+            [[(a0i, b0i), (a1i, b1i)] for (a0i, b0i, a1i, b1i) in zip(a0, b0, a1, b1)]
         )
-        self._pts.set_data(x0, y0)
+        self._pts.set_data(a0, b0)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -60,9 +77,6 @@ class MainWindow(QtWidgets.QMainWindow):
     _tree = None
     _canvas = None
     _data = None
-    _xlim = None
-    _ylim = None
-    _Zlim = None
 
     def __init__(self, filename):
         super().__init__()
@@ -81,14 +95,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._main.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setCentralWidget(self._main)
 
-        fig = Figure(figsize=(12, 4.5))
-        self._ax_xy = fig.add_axes([0.08, 0.1, 0.35, 0.82])
-        self._ax_zx = fig.add_axes([0.52, 0.1, 0.45, 0.39])
-        self._ax_zy = fig.add_axes(
-            [0.52, 0.53, 0.45, 0.39], sharex=self._ax_zx, sharey=self._ax_xy
+        self._fig = Figure(figsize=(12, 4.5))
+        self._ax = {
+            "xy": self._fig.add_axes([0.08, 0.1, 0.35, 0.74]),
+            "zx": self._fig.add_axes([0.52, 0.1, 0.45, 0.35]),
+        }
+        self._ax["zy"] = self._fig.add_axes(
+            [0.52, 0.49, 0.45, 0.35], sharex=self._ax["zx"], sharey=self._ax["xy"]
         )
 
-        self._canvas = FigureCanvas(fig)
+        self._canvas = FigureCanvas(self._fig)
         self._navigation = NavigationToolbar(self._canvas, self)
         self.addToolBar(self._navigation)
 
@@ -145,6 +161,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 "mc_trk_len",
                 "mc_trk_[xyz]",
                 "mc_trk_p[xyz]",
+                "mc_trk_imot",
+                "mc_trk_pid",
             ],
             entry_start=self._range[0],
             entry_stop=self._range[1],
@@ -154,14 +172,10 @@ class MainWindow(QtWidgets.QMainWindow):
         d = self._data
         i = self._spinbox.value() - 1 - self._range[0]
         if len(args) == 1:
-            return d[args[0]][i]
-        return (d[arg][i] for arg in args)
+            return np.asarray(d[args[0]][i])
+        return (np.asarray(d[arg][i]) for arg in args)
 
     def _init_canvas(self):
-        ax_xy = self._ax_xy
-        ax_zx = self._ax_zx
-        ax_zy = self._ax_zy
-
         d = self._data
 
         def r(d, s, delta, sym):
@@ -182,39 +196,56 @@ class MainWindow(QtWidgets.QMainWindow):
                 return -xmax, xmax
             return xmin, xmax
 
-        self._xlim = r(d, "x", 1, True)
-        self._ylim = r(d, "y", 1, True)
-        self._zlim = r(d, "z", 10, False)
+        self._lim = {
+            "x": r(d, "x", 1, True),
+            "y": r(d, "y", 1, True),
+            "z": r(d, "z", 10, False),
+        }
 
-        ax_xy.set_xlim(*self._xlim)
-        ax_xy.set_ylim(*self._ylim)
-        ax_zx.set_xlim(*self._zlim)
-        ax_zx.set_ylim(*self._xlim)
-        ax_zy.set_xlim(*self._zlim)
-        ax_zy.set_ylim(*self._ylim)
+        for (dim0, dim1), ax in self._ax.items():
+            ax.set_xlim(*self._lim[dim0])
+            ax.set_ylim(*self._lim[dim1])
+            ax.set_xlabel(f"{dim0} / mm")
+            ax.set_ylabel(f"{dim1} / mm")
 
-        ax_xy.set_xlabel("x / mm")
-        ax_xy.set_ylabel("y / mm")
-        ax_zx.set_xlabel("z / mm")
-        ax_zx.set_ylabel("x / mm")
-        ax_zy.set_ylabel("y / mm")
+        self._ax["zy"].xaxis.set_visible(False)
 
-        self._ax_zy.xaxis.set_visible(False)
-
-        for ax in (ax_xy, ax_zx, ax_zy):
+        for ax in self._ax.values():
             obj = {"vtx": PointCollection(ax, "r", 4)}
-            for trk, col, zorder in (
-                ("trk", "r", 3),
-                ("vtrk", "b", 2),
-                ("mc_trk", "g", 1),
+            for type, col, zorder in (
+                ("trk", "k", 3),
+                ("vtrk", "0.5", 2),
             ):
                 alpha = 0.2
-                obj[trk] = TrackCollection(ax, col, alpha, zorder)
+                neutral = type.endswith("neutral") or type in ("n", "gamma")
+                obj[type] = TrackCollection(
+                    ax, col, alpha, zorder, "--" if neutral else "-"
+                )
+            for i, type in enumerate(PID):
+                alpha = 0.2
+                col = f"C{i}"
+                zorder = 1
+                neutral = type.endswith("neutral") or type in ("n", "gamma")
+                obj[type] = TrackCollection(
+                    ax, col, alpha, zorder, "--" if neutral else "-"
+                )
             ax._obj = obj
+
+        handles = [Line2D([], [], color="k"), Line2D([], [], color="0.5")]
+        labels = ["Long track", "VELO track"]
+
+        for i, label in enumerate(PID):
+            handles.append(Line2D([], [], color=f"C{i}"))
+            labels.append(label)
+
+        self._fig.legend(
+            handles, labels, loc=(0.15, 0.85), ncol=6, frameon=False, fontsize="small"
+        )
 
     def _update_canvas(self):
         self._update_vtx()
         self._update_trk()
+        self._update_gen()
 
         title = [f"Event {self._spinbox.value()} / {self._tree.num_entries}"]
 
@@ -248,19 +279,19 @@ class MainWindow(QtWidgets.QMainWindow):
         except ValueError:
             warnings.warn("Branch mc_vtx_len not found")
 
-        self._canvas.figure.suptitle("    ".join(title))
+        self._canvas.figure.suptitle("    ".join(title), fontsize="medium")
         self._canvas.draw()
 
     def _update_vtx(self):
         x, y, z = self._get("vtx_x", "vtx_y", "vtx_z")
-        for ax, a, b in ((self._ax_xy, x, y), (self._ax_zx, z, x), (self._ax_zy, z, y)):
-            ax._obj["vtx"].update(a, b)
+        r = {"x": x, "y": y, "z": z}
+        for (dim0, dim1), ax in self._ax.items():
+            ax._obj["vtx"].update(r[dim0], r[dim1])
 
     def _update_trk(self):
         for trk, button in (
             ("trk", self._long_visible),
             ("vtrk", self._velo_visible),
-            ("mc_trk", self._generator_visible),
         ):
             if button.isChecked():
                 try:
@@ -278,22 +309,67 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 x, y, z, px, py, pz = np.empty((6, 0))
 
-            for ax, a, b, pa, pb, lim in (
-                (self._ax_xy, x, y, px, py, self._xlim),
-                (self._ax_zx, z, x, pz, px, self._zlim),
-                (self._ax_zy, z, y, pz, py, self._zlim),
-            ):
-                pa = np.array(pa)
-                a = np.array(a)
-                r = np.zeros_like(a)
+            r = {"x": x, "y": y, "z": z}
+            p = {"x": px, "y": py, "z": pz}
+            for (dim0, dim1), ax in self._ax.items():
+                a0 = r[dim0]
+                b0 = r[dim1]
+                pa = p[dim0]
+                pb = p[dim1]
+                lim = self._lim[dim0]
+                s = np.zeros_like(a0)
                 with np.errstate(invalid="ignore", divide="ignore"):
-                    r[pa > 0] = ((lim[1] - a) / pa)[pa > 0]
-                    r[pa < 0] = ((lim[0] - a) / pa)[pa < 0]
+                    s[pa > 0] = ((lim[1] - a0) / pa)[pa > 0]
+                    s[pa < 0] = ((lim[0] - a0) / pa)[pa < 0]
+                a1 = a0 + pa * s
+                b1 = b0 + pb * s
+                ax._obj[trk].update(a0, b0, a1, b1)
 
-                a1 = a + pa * r
-                b1 = b + pb * r
-
-                ax._obj[trk].update(a, b, a1, b1)
+    def _update_gen(self):
+        if not self._generator_visible.isChecked():
+            for ax in self._ax.values():
+                for pid in PID:
+                    ax._obj[pid].update([], [], [], [])
+            return
+        try:
+            x, y, z, px, py, pz, pid, imot = self._get(
+                "mc_trk_x",
+                "mc_trk_y",
+                "mc_trk_z",
+                "mc_trk_px",
+                "mc_trk_py",
+                "mc_trk_pz",
+                "mc_trk_pid",
+                "mc_trk_imot",
+            )
+        except ValueError:
+            warnings.warn(
+                "Some branches of mc_trk_[xyz], mc_trk_p[xyz], "
+                "mc_trk_imot, mc_trk_pid not found"
+            )
+            return
+        for type, pid_or_pids in PID.items():
+            if isinstance(pid_or_pids, int):
+                m = np.abs(pid) == pid_or_pids
+            else:
+                m = True
+                for pidi in pid_or_pids:
+                    m |= np.abs(pid) == pidi
+            r = {"x": x[m], "y": y[m], "z": z[m]}
+            p = {"x": px[m], "y": py[m], "z": pz[m]}
+            for (dim0, dim1), ax in self._ax.items():
+                lim = self._lim[dim0]
+                a0 = r[dim0]
+                b0 = r[dim1]
+                pa = p[dim0]
+                pb = p[dim1]
+                s = np.zeros_like(a0)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    s[pa > 0] = ((lim[1] - a0) / pa)[pa > 0]
+                    s[pa < 0] = ((lim[0] - a0) / pa)[pa < 0]
+                a1 = a0 + pa * s
+                b1 = b0 + pb * s
+                ax._obj[type].update(a0, b0, a1, b1)
 
     def _backward(self):
         self._spinbox.setValue(self._spinbox.value() - 1)
