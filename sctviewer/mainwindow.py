@@ -10,33 +10,57 @@ from matplotlib.lines import Line2D
 import uproot
 import awkward  # noqa
 import warnings
+import particle
 
+
+def pid_to_name(pid):
+    try:
+        name = particle.Particle.from_pdgid(pid).name
+    except particle.InvalidParticle:
+        name = f"Unknown({pid})"
+    return name
+
+
+LONG_LIVED_PIDs = set(particle.Particle.findall(lambda p: p.ctau > 1))
+# particle 0.15.1 uses None for ctau of neutrinos, add neutrinos by hand for now
+for p in particle.Particle.findall(lambda p: "nu" in p.name):
+    LONG_LIVED_PIDs.add(p.pdgid)
+
+# categories of long-lived particles
 PID = {
-    "pi": 211,
-    "K": 321,
-    "p": 2212,
-    "n": 2112,
-    "e": 11,
-    "mu": 13,
-    "gamma": 22,
+    "pi": (particle.literals.pi_plus.pdgid,),
+    "K": (particle.literals.K_plus.pdgid,),
+    "p": (particle.literals.proton.pdgid, 1000010010),
+    "n": (particle.literals.neutron.pdgid, 1000000010),
+    "e": (particle.literals.e_minus.pdgid,),
+    "mu": (particle.literals.mu_minus.pdgid,),
+    "gamma": (particle.literals.gamma.pdgid,),
     "strange_neutral": (
-        130,
-        310,
-        3122,
-        3322,
+        particle.literals.K_S_0.pdgid,
+        particle.literals.K_L_0.pdgid,
+        particle.literals.Lambda.pdgid,
+        particle.literals.Xi_0.pdgid,
     ),
-    "strange_charged": (3312, 3334, 3112),
+    "strange_charged": (
+        particle.literals.Sigma_minus.pdgid,
+        particle.literals.Sigma_plus.pdgid,
+        particle.literals.Xi_minus.pdgid,
+        particle.literals.Omega_minus.pdgid,
+    ),
 }
+
 COLOR = {
-    "pi": "C1",
-    "K": "C0",
-    "p": "0.4",
-    "n": "0.4",
-    "e": "y",
-    "gamma": "y",
-    "mu": "g",
-    "strange_neutral": "c",
-    "strange_charged": "c",
+    "pi": "darkorange",
+    "K": "steelblue",
+    "p": "k",
+    "n": "k",
+    "e": "gold",
+    "gamma": "gold",
+    "mu": "forestgreen",
+    "strange_neutral": "teal",
+    "strange_charged": "teal",
+    "nuclei": "k",
+    "other": "fuchsia",
 }
 
 
@@ -69,9 +93,8 @@ class TrackCollection:
             [],
             marker=".",
             ls="",
-            color=color,
+            mfc=color,
             mec="none",
-            alpha=alpha,
             zorder=zorder,
         )
         ax.add_collection(self._lines)
@@ -90,6 +113,7 @@ class MainWindow(QtWidgets.QMainWindow):
     _tree = None
     _canvas = None
     _data = None
+    _debug = False
 
     def __init__(self, filename):
         super().__init__()
@@ -127,7 +151,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for button in (self._velo_visible, self._long_visible, self._generator_visible):
             button.setCheckable(True)
             button.setChecked(True)
-            button.clicked.connect(self._update_canvas)
+            button.clicked.connect(self._process_event)
 
         b = QtWidgets.QPushButton("Backward")
         f = QtWidgets.QPushButton("Forward")
@@ -154,7 +178,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._update_data()
         self._init_canvas()
-        self._update_canvas()
+        self._process_event()
 
     def _update_data(self):
         tree = self._tree
@@ -226,7 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for ax in self._ax.values():
             obj = {"vtx": PointCollection(ax, "r", 4)}
             handles = []
-            alpha = 0.2
+            alpha = 0.3
             for type, col, zorder in (
                 ("vtrk", "r", 2),
                 ("trk", "b", 3),
@@ -241,17 +265,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 col = COLOR[type]
                 obj[type] = TrackCollection(ax, col, alpha, zorder, linestyle)
                 handles.append(Line2D([], [], color=col, linestyle=linestyle))
-            col = "k"
-            obj["other"] = TrackCollection(ax, col, alpha, zorder, "-")
-            handles.append(Line2D([], [], color=col))
+            for type, linestyle in (("nuclei", "--"), ("other", "-.")):
+                col = COLOR[type]
+                obj[type] = TrackCollection(ax, col, alpha, zorder, linestyle)
+                handles.append(Line2D([], [], color=col, linestyle=linestyle))
             ax._obj = obj
 
-        labels = ["Long track", "VELO track"] + list(PID) + ["other"]
+        labels = ["Long track", "VELO track"] + list(PID) + ["nuclei", "other"]
         self._fig.legend(
-            handles, labels, loc=(0.15, 0.85), ncol=6, frameon=False, fontsize="small"
+            handles,
+            labels,
+            loc=(0.15, 0.85),
+            ncol=7,
+            frameon=False,
+            fontsize="small",
+            handlelength=3,
         )
 
-    def _update_canvas(self):
+    def _process_event(self):
         self._update_vtx()
         self._update_trk()
         self._update_gen()
@@ -290,6 +321,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._canvas.figure.suptitle("    ".join(title), fontsize="medium")
         self._canvas.draw()
+
+        self._run_debug()
 
     def _update_vtx(self):
         x, y, z = self._get("vtx_x", "vtx_y", "vtx_z")
@@ -339,6 +372,8 @@ class MainWindow(QtWidgets.QMainWindow):
             for ax in self._ax.values():
                 for pid in PID:
                     ax._obj[pid].update([], [], [], [])
+                for type in ("nuclei", "other"):
+                    ax._obj[type].update([], [], [], [])
             return
         try:
             x, y, z, px, py, pz, pid, imot = self._get(
@@ -358,12 +393,9 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             return
 
-        end_vertex_x = np.full(len(x), np.inf)
-        end_vertex_x[px < 0] = -np.inf
-        end_vertex_y = np.full(len(x), np.inf)
-        end_vertex_y[py < 0] = -np.inf
-        end_vertex_z = np.full(len(x), np.inf)
-        end_vertex_z[pz < 0] = -np.inf
+        end_vertex_x = np.where(px > 0, np.inf, -np.inf)
+        end_vertex_y = np.where(py > 0, np.inf, -np.inf)
+        end_vertex_z = np.where(pz > 0, np.inf, -np.inf)
         daughters = {}
         for i, imoti in enumerate(imot):
             if imoti != -1:
@@ -375,18 +407,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         types = []
         m_all = False
-        for type, pid_or_pids in PID.items():
-            if isinstance(pid_or_pids, int):
-                m = np.abs(pid) == pid_or_pids
-            else:
-                m = False
-                for pidi in pid_or_pids:
-                    m |= np.abs(pid) == pidi
+        for type, pids in PID.items():
+            m = False
+            for pidi in pids:
+                m |= np.abs(pid) == pidi
             m_all |= m
             r = {"x": x[m], "y": y[m], "z": z[m]}
             p = {"x": px[m], "y": py[m], "z": pz[m]}
             re = {"x": end_vertex_x[m], "y": end_vertex_y[m], "z": end_vertex_z[m]}
             types.append((type, r, p, re))
+        m = np.fromiter((particle.PDGID(pidi).is_nucleus for pidi in pid), bool)
+        m[m_all] = False  # protons and neutrons have been drawn already
+        m_all |= m
+        r = {"x": x[m], "y": y[m], "z": z[m]}
+        p = {"x": px[m], "y": py[m], "z": pz[m]}
+        re = {"x": end_vertex_x[m], "y": end_vertex_y[m], "z": end_vertex_z[m]}
+        types.append(("nuclei", r, p, re))
         m = ~m_all
         r = {"x": x[m], "y": y[m], "z": z[m]}
         p = {"x": px[m], "y": py[m], "z": pz[m]}
@@ -403,16 +439,61 @@ class MainWindow(QtWidgets.QMainWindow):
                 ea = re[dim0]
                 eb = re[dim1]
                 s = np.zeros_like(a0)
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    s[pa > 0] = ((lim[1] - a0) / pa)[pa > 0]
-                    s[pa < 0] = ((lim[0] - a0) / pa)[pa < 0]
+                for limi, m in zip(lim, (pa < 0, pa > 0)):
+                    s[m] = (limi - a0)[m] / pa[m]
                 a1 = a0 + pa * s
                 b1 = b0 + pb * s
                 for m, fn in zip(((pa > 0), (pa < 0)), (np.minimum, np.maximum)):
                     a1[m] = fn(ea, a1)[m]
                 for m, fn in zip(((pb > 0), (pb < 0)), (np.minimum, np.maximum)):
                     b1[m] = fn(eb, b1)[m]
-                ax._obj[type].update(a0, b0, a1, b1)
+                m = s != 0
+                ax._obj[type].update(a0[m], b0[m], a1[m], b1[m])
+
+    def _run_debug(self):
+        if not self._debug:
+            return
+
+        try:
+            pid, imot, px, py, pz = self._get(
+                "mc_trk_pid", "mc_trk_imot", "mc_trk_px", "mc_trk_py", "mc_trk_pz"
+            )
+        except ValueError:
+            warnings.warn(
+                "Some branches of mc_trk_p[xyz], mc_trk_pid, mc_trk_imot not found"
+            )
+            return
+
+        has_daughters = set()
+        for i, imoti in enumerate(imot):
+            if imoti != -1:
+                has_daughters.add(imoti)
+
+        no_daughters_but_short_lived = []
+        zero_momentum = []
+        for i, (pidi, xi, yi, zi) in enumerate(zip(pid, px, py, pz)):
+            if xi == 0 or yi == 0 or zi == 0:
+                name = pid_to_name(pidi)
+                zero_momentum.append((i, name, xi, yi, zi))
+            if i in has_daughters:
+                continue
+            if pidi in LONG_LIVED_PIDs:
+                continue
+            if particle.PDGID(pidi).is_nucleus:
+                continue
+            name = pid_to_name(pidi)
+            no_daughters_but_short_lived.append((i, name))
+
+        print(f"Debug log for event {self._spinbox.value()}")
+        if no_daughters_but_short_lived:
+            print("  Particles without daughters which are not long-lived")
+            for i, name in no_daughters_but_short_lived:
+                print(f"    {i} {name}")
+
+        if zero_momentum:
+            print("  Particles with zero momentum in x or y or z")
+            for i, name, x, y, z in zero_momentum:
+                print(f"    {i} {name} ({x}, {y}, {z})")
 
     def _backward(self):
         self._spinbox.setValue(self._spinbox.value() - 1)
@@ -424,7 +505,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ievent = self._spinbox.value() - 1
         if ievent < self._range[0] or ievent >= self._range[1]:
             self._update_data()
-        self._update_canvas()
+        self._process_event()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -452,4 +533,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if key == Qt.Key_B:
             self._tree.show()
+            return
+        if key == Qt.Key_D:
+            self._debug = not self._debug
+            self._run_debug()
             return

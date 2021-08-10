@@ -3,3 +3,4 @@ venv
 __pycache__
 sctviewer/_version.py
 .DS_Store
+.pytest_cache
