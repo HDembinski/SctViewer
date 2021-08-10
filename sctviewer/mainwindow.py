@@ -271,7 +271,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 handles.append(Line2D([], [], color=col, linestyle=linestyle))
             ax._obj = obj
 
-        labels = ["Long track", "VELO track"] + list(PID) + ["nuclei", "other"]
+        labels = ["VELO track", "Long track"] + list(PID) + ["nuclei", "other"]
         self._fig.legend(
             handles,
             labels,
@@ -289,33 +289,36 @@ class MainWindow(QtWidgets.QMainWindow):
 
         title = [f"Event {self._spinbox.value()} / {self._tree.num_entries}"]
 
+        # Avoiding LaTeX because the parser is really slow, see
+        # https://github.com/matplotlib/matplotlib/issues/20821
+
         try:
             n = self._get("vtx_len")
-            title.append(f"$n_\\mathrm{{vtx}} = {n}$")
+            title.append(f"Primary vertices (PV) = {n}")
         except ValueError:
             warnings.warn("Branch vtx_len not found")
 
         try:
             n = self._get("vtrk_len")
-            title.append(f"$n_\\mathrm{{VELO}} = {n}$")
+            title.append(f"VELO tracks = {n}")
         except ValueError:
             warnings.warn("Branch vtrk_len not found")
 
         try:
             n = self._get("trk_len")
-            title.append(f"$n_\\mathrm{{Long}} = {n}$")
+            title.append(f"Long tracks = {n}")
         except ValueError:
             warnings.warn("Branch trk_len not found")
 
         try:
             n = self._get("mc_trk_len")
-            title.append(f"$n_\\mathrm{{gen}} = {n}$")
+            title.append(f"Generated particles = {n}")
         except ValueError:
             warnings.warn("Branch mc_trk_len not found")
 
         try:
             n = self._get("mc_vtx_len")
-            title.append(f"$n_\\mathrm{{pv,gen}} = {n}$")
+            title.append(f"Generated PVs = {n}")
         except ValueError:
             warnings.warn("Branch mc_vtx_len not found")
 
