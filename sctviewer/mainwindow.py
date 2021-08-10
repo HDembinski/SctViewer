@@ -358,6 +358,21 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             return
 
+        end_vertex_x = np.full(len(x), np.inf)
+        end_vertex_x[px < 0] = -np.inf
+        end_vertex_y = np.full(len(x), np.inf)
+        end_vertex_y[py < 0] = -np.inf
+        end_vertex_z = np.full(len(x), np.inf)
+        end_vertex_z[pz < 0] = -np.inf
+        daughters = {}
+        for i, imoti in enumerate(imot):
+            if imoti != -1:
+                daughters[imoti] = i
+        for imoti, i in daughters.items():
+            end_vertex_x[imoti] = x[i]
+            end_vertex_y[imoti] = y[i]
+            end_vertex_z[imoti] = z[i]
+
         types = []
         m_all = False
         for type, pid_or_pids in PID.items():
@@ -370,25 +385,33 @@ class MainWindow(QtWidgets.QMainWindow):
             m_all |= m
             r = {"x": x[m], "y": y[m], "z": z[m]}
             p = {"x": px[m], "y": py[m], "z": pz[m]}
-            types.append((type, r, p))
+            re = {"x": end_vertex_x[m], "y": end_vertex_y[m], "z": end_vertex_z[m]}
+            types.append((type, r, p, re))
         m = ~m_all
         r = {"x": x[m], "y": y[m], "z": z[m]}
         p = {"x": px[m], "y": py[m], "z": pz[m]}
-        types.append(("other", r, p))
+        re = {"x": end_vertex_x[m], "y": end_vertex_y[m], "z": end_vertex_z[m]}
+        types.append(("other", r, p, re))
 
-        for (type, r, p) in types:
+        for (type, r, p, re) in types:
             for (dim0, dim1), ax in self._ax.items():
                 lim = self._lim[dim0]
                 a0 = r[dim0]
                 b0 = r[dim1]
                 pa = p[dim0]
                 pb = p[dim1]
+                ea = re[dim0]
+                eb = re[dim1]
                 s = np.zeros_like(a0)
                 with np.errstate(invalid="ignore", divide="ignore"):
                     s[pa > 0] = ((lim[1] - a0) / pa)[pa > 0]
                     s[pa < 0] = ((lim[0] - a0) / pa)[pa < 0]
                 a1 = a0 + pa * s
                 b1 = b0 + pb * s
+                for m, fn in zip(((pa > 0), (pa < 0)), (np.minimum, np.maximum)):
+                    a1[m] = fn(ea, a1)[m]
+                for m, fn in zip(((pb > 0), (pb < 0)), (np.minimum, np.maximum)):
+                    b1[m] = fn(eb, b1)[m]
                 ax._obj[type].update(a0, b0, a1, b1)
 
     def _backward(self):
