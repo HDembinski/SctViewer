@@ -27,6 +27,17 @@ PID = {
     ),
     "strange_charged": (3312, 3334, 3112),
 }
+COLOR = {
+    "pi": "C1",
+    "K": "C0",
+    "p": "0.4",
+    "n": "0.4",
+    "e": "y",
+    "gamma": "y",
+    "mu": "g",
+    "strange_neutral": "c",
+    "strange_charged": "c",
+}
 
 
 class NavigationToolbar(NavigationToolbarBase):
@@ -50,7 +61,9 @@ class PointCollection:
 
 class TrackCollection:
     def __init__(self, ax, color, alpha, zorder, linestyle):
-        self._lines = LineCollection([], colors=color, alpha=alpha, zorder=zorder)
+        self._lines = LineCollection(
+            [], colors=color, alpha=alpha, zorder=zorder, linestyles=linestyle
+        )
         self._pts = Line2D(
             [],
             [],
@@ -212,32 +225,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for ax in self._ax.values():
             obj = {"vtx": PointCollection(ax, "r", 4)}
+            handles = []
+            alpha = 0.2
             for type, col, zorder in (
-                ("trk", "k", 3),
-                ("vtrk", "0.5", 2),
+                ("vtrk", "r", 2),
+                ("trk", "b", 3),
             ):
-                alpha = 0.2
                 neutral = type.endswith("neutral") or type in ("n", "gamma")
-                obj[type] = TrackCollection(
-                    ax, col, alpha, zorder, "--" if neutral else "-"
-                )
+                obj[type] = TrackCollection(ax, col, alpha, zorder, "-")
+                handles.append(Line2D([], [], color=col))
+            zorder = 1
             for i, type in enumerate(PID):
-                alpha = 0.2
-                col = f"C{i}"
-                zorder = 1
                 neutral = type.endswith("neutral") or type in ("n", "gamma")
-                obj[type] = TrackCollection(
-                    ax, col, alpha, zorder, "--" if neutral else "-"
-                )
+                linestyle = ":" if neutral else "-"
+                col = COLOR[type]
+                obj[type] = TrackCollection(ax, col, alpha, zorder, linestyle)
+                handles.append(Line2D([], [], color=col, linestyle=linestyle))
+            col = "k"
+            obj["other"] = TrackCollection(ax, col, alpha, zorder, "-")
+            handles.append(Line2D([], [], color=col))
             ax._obj = obj
 
-        handles = [Line2D([], [], color="k"), Line2D([], [], color="0.5")]
-        labels = ["Long track", "VELO track"]
-
-        for i, label in enumerate(PID):
-            handles.append(Line2D([], [], color=f"C{i}"))
-            labels.append(label)
-
+        labels = ["Long track", "VELO track"] + list(PID) + ["other"]
         self._fig.legend(
             handles, labels, loc=(0.15, 0.85), ncol=6, frameon=False, fontsize="small"
         )
@@ -348,15 +357,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 "mc_trk_imot, mc_trk_pid not found"
             )
             return
+
+        types = []
+        m_all = False
         for type, pid_or_pids in PID.items():
             if isinstance(pid_or_pids, int):
                 m = np.abs(pid) == pid_or_pids
             else:
-                m = True
+                m = False
                 for pidi in pid_or_pids:
                     m |= np.abs(pid) == pidi
+            m_all |= m
             r = {"x": x[m], "y": y[m], "z": z[m]}
             p = {"x": px[m], "y": py[m], "z": pz[m]}
+            types.append((type, r, p))
+        m = ~m_all
+        r = {"x": x[m], "y": y[m], "z": z[m]}
+        p = {"x": px[m], "y": py[m], "z": pz[m]}
+        types.append(("other", r, p))
+
+        for (type, r, p) in types:
             for (dim0, dim1), ax in self._ax.items():
                 lim = self._lim[dim0]
                 a0 = r[dim0]
