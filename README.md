@@ -27,3 +27,4 @@ Supported Keyboard commands:
 - V: Toggle VELO track visibility
 - L: Toggle Long track visibility
 - G: Toggle Generator track visibility
+- D: Toggle generation of debug log in the terminal
