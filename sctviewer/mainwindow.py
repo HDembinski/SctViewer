@@ -35,13 +35,13 @@ PID = {
     "e": (particle.literals.e_minus.pdgid,),
     "mu": (particle.literals.mu_minus.pdgid,),
     "gamma": (particle.literals.gamma.pdgid,),
-    "strange_neutral": (
+    "strange neutral": (
         particle.literals.K_S_0.pdgid,
         particle.literals.K_L_0.pdgid,
         particle.literals.Lambda.pdgid,
         particle.literals.Xi_0.pdgid,
     ),
-    "strange_charged": (
+    "strange charged": (
         particle.literals.Sigma_minus.pdgid,
         particle.literals.Sigma_plus.pdgid,
         particle.literals.Xi_minus.pdgid,
@@ -57,8 +57,8 @@ COLOR = {
     "e": "gold",
     "gamma": "gold",
     "mu": "forestgreen",
-    "strange_neutral": "teal",
-    "strange_charged": "teal",
+    "strange neutral": "teal",
+    "strange charged": "teal",
     "nuclei": "k",
     "other": "fuchsia",
 }
@@ -255,15 +255,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 ("vtrk", "r", 2),
                 ("trk", "b", 3),
             ):
-                neutral = type.endswith("neutral") or type in ("n", "gamma")
                 obj[type] = TrackCollection(ax, col, alpha, zorder, "-")
                 handles.append(Line2D([], [], color=col))
             zorder = 1
             for i, type in enumerate(PID):
                 neutral = type.endswith("neutral") or type in ("n", "gamma")
                 linestyle = ":" if neutral else "-"
+                alph = alpha * 2 if neutral else alpha
                 col = COLOR[type]
-                obj[type] = TrackCollection(ax, col, alpha, zorder, linestyle)
+                obj[type] = TrackCollection(ax, col, alph, zorder, linestyle)
                 handles.append(Line2D([], [], color=col, linestyle=linestyle))
             for type, linestyle in (("nuclei", "--"), ("other", "-.")):
                 col = COLOR[type]
@@ -275,7 +275,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fig.legend(
             handles,
             labels,
-            loc=(0.15, 0.85),
+            loc=(0.15, 0.86),
             ncol=7,
             frameon=False,
             fontsize="small",

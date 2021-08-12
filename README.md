@@ -28,3 +28,13 @@ Supported Keyboard commands:
 - L: Toggle Long track visibility
 - G: Toggle Generator track visibility
 - D: Toggle generation of debug log in the terminal
+
+## Developer info
+
+Similar project https://twiki.cern.ch/twiki/bin/view/LHCb/LHCbEventDisplay
+
+- JavaScript and WebGL
+- Requires conversion of LHCb format to JSON format
+- https://gitlab.cern.ch/bcouturi/gltfexporter
+- https://github.com/andrewpap22/root_cern-To_gltf-Exporter
+- https://gitlab.cern.ch/lhcb/geometryvalidation/-/tree/master/gdml_export
