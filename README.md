@@ -13,12 +13,30 @@ If you don't want to install `pipx`, you can also just use `pip`. Since the app 
 pipx install git+https://github.com/HDembinski/SctViewer.git
 ```
 
+This requires that you have `git` installed. Please install `git` following the usual steps for your platform.
+
+### Installation on Windows
+
+Installation on Windows is a bit more complicated.
+
+- Type `python` in the Windows command prompt. If Python is not installed, it will direct you to the Microsoft store to download it.
+- Type `git` in the Windows Command Prompt to see if it is installed. If it is not installed, [you need to install it](https://git-scm.com/downloads)
+- Go back to the command prompt and run
+```sh
+python -m pip install --upgrade pip
+python -m pip install git+https://github.com/HDembinski/SctViewer.git
+```
+
 ## Usage
 
 Run the viewer on an SCT file.
 
 ```sh
 sctviewer /path/to/my/file.sct
+```
+if `sctviewer` is in your PATH, otherwise
+```sh
+python -m sctviewer /path/to/my/file.sct
 ```
 
 Supported Keyboard commands:
