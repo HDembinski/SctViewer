@@ -2,6 +2,8 @@
 
 Viewers for the SCT event format developed by MPIK and TUDO for minimum bias studies.
 
+Supported: Windows, OSX, Linux
+
 ## Installation
 
 It is recommended to install the app with `pipx`, which automatically generates an isolated environment for the dependencies of the application.
