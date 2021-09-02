@@ -1,7 +1,6 @@
 def main():
     import sys
     from PyQt5 import QtWidgets
-    from .mainwindow import MainWindow
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -15,6 +14,9 @@ def main():
     if len(qapp.arguments()) != 2:
         raise SystemExit("You need to provide a filename.")
 
+    # importing this takes a long time so we only do it after checking arguments
+    from .mainwindow import MainWindow
+
     app = MainWindow(qapp.arguments()[1])
     app.show()
     app.activateWindow()
@@ -22,5 +24,4 @@ def main():
     qapp.exec_()
 
 
-if __name__ == "__main__":
-    main()
+main()
