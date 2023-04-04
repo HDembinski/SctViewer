@@ -108,7 +108,6 @@ class TrackCollection:
 
 
 class MainWindow(QtWidgets.QMainWindow):
-
     _range = None
     _tree = None
     _canvas = None
@@ -432,7 +431,7 @@ class MainWindow(QtWidgets.QMainWindow):
         re = {"x": end_vertex_x[m], "y": end_vertex_y[m], "z": end_vertex_z[m]}
         types.append(("other", r, p, re))
 
-        for (type, r, p, re) in types:
+        for type, r, p, re in types:
             for (dim0, dim1), ax in self._ax.items():
                 lim = self._lim[dim0]
                 a0 = r[dim0]
