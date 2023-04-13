@@ -11,7 +11,6 @@ def test_positive():
 
 
 def test_long_lived():
-
     # skip gluon, ID 21
     all_long_lived = set(
         abs(p.pdgid)
