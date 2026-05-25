@@ -7,8 +7,7 @@ import ROOT
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Browse MC records in SCT files.",
-    epilog=textwrap.dedent(
-        """
+    epilog=textwrap.dedent("""
 Interactive controls:
   - Right: next event
   - Left: previous event
@@ -19,8 +18,7 @@ Interactive controls:
   - q: quit
   - g: goto event index (0 is first event)
 
-"""
-    ),
+"""),
 )
 parser.add_argument("input_file", help="SCT file with MC record")
 args = parser.parse_args()
